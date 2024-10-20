@@ -58,6 +58,7 @@ public protocol ServiceClient {
     func getRefreshTokenCookie() -> String?
 }
 
+@available(macOS 12.0, iOS 15.0, watchOS 8.0, tvOS 15.0, *)
 open class JsonServiceClient : NSObject, @unchecked Sendable, ServiceClient, IHasBearerToken, IHasSessionId, IHasVersion {
     open var baseUrl: String
     open var replyUrl: String
@@ -664,6 +665,7 @@ open class JsonServiceClient : NSObject, @unchecked Sendable, ServiceClient, IHa
     }
 }
 
+@available(macOS 12.0, iOS 15.0, watchOS 8.0, tvOS 15.0, *)
 extension JsonServiceClient: URLSessionDelegate {
     public static func toHostsMap(_ urls: [String]) -> [String: Int] {
         var to: [String: Int] = [:]
