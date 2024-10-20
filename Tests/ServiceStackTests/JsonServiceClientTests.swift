@@ -31,8 +31,8 @@ final class JsonServiceClientTests : @unchecked Sendable {
             let response = try client.post(request)
 
             assertHelloAllTypesResponse(response, expected: request)
-        } catch let e as NSError {
-            Issue.record("Error: \(e)")
+        } catch {
+            Issue.record("Error: \(error)")
         }
     }
     
@@ -48,6 +48,251 @@ final class JsonServiceClientTests : @unchecked Sendable {
         let fromJson = fromJsonData(AllTypes.self, json)!
         
         assertAllTypes(fromJson, expected: request)
+    }
+
+    @Test func test_Can_GET_Test_AllTypes() {
+        let request = createAllTypes()
+        request.subType = nil
+        request.dateTime = nil
+
+        do {
+            let url = client.createUrl(dto: request)
+            print("url: \(url)")
+            let response: AllTypes = try client.get(url)
+
+            assertAllTypes(response, expected: request)
+        } catch {
+            Issue.record("Error: \(error)")
+        }
+    }
+
+    @Test func test_Can_PUT_Test_HelloAllTypes() {
+        let request = createHelloAllTypes()
+
+        do {
+            let response = try client.put(request)
+
+            assertHelloAllTypesResponse(response, expected: request)
+        } catch {
+            Issue.record("Error: \(error)")
+        }
+    }
+
+    @Test func test_Can_PUT_Test_HelloAllTypes_Async() async throws {
+        let request = createHelloAllTypes()
+
+        let r = try await client.putAsync(request)
+        self.assertHelloAllTypesResponse(r, expected: request)
+    }
+
+    @Test func test_Does_handle_404_Error() {
+        let client = JsonServiceClient(baseUrl: "https://test.servicestack.net")
+
+        var globalError: NSError? = nil
+        //Global.onError = { globalError = $0 }
+
+        var localError: NSError?
+        client.onError = { localError = $0 }
+
+        let request = ThrowType()
+        request.type = "NotFound"
+        request.message = "not here"
+
+        do {
+            let response = try client.put(request)
+            #expect(response == nil)
+        } catch let responseError as NSError {
+            #expect(responseError != nil)
+            #expect(localError != nil)
+            #expect(globalError != nil)
+
+            let status: ResponseStatus = responseError.responseStatus
+            #expect(status.errorCode! == "NotFound")
+            #expect(status.message! == "not here")
+            // XCTAssertNotNil(status.stackTrace!)
+        }
+    }
+
+    @Test func test_Does_handle_404_Error_Async() async throws {
+        let client = JsonServiceClient(baseUrl: "https://test.servicestack.net")
+
+        var globalError: NSError?
+        //Global.onError = { globalError = $0 }
+
+        var localError: NSError?
+        client.onError = { localError = $0 }
+
+        let request = ThrowType()
+        request.type = "NotFound"
+        request.message = "not here"
+
+        do {
+            let response = try await client.putAsync(request)
+            #expect(response == nil)
+        } catch let responseError as NSError {
+            #expect(responseError != nil)
+            #expect(localError != nil)
+            #expect(globalError != nil)
+
+            let status: ResponseStatus = responseError.responseStatus
+            #expect(status.errorCode! == "NotFound")
+            #expect(status.message! == "not here")
+            // XCTAssertNotNil(status.stackTrace!)
+        }
+    }
+
+    @Test func test_Does_handle_ValidationException() {
+        let client = JsonServiceClient(baseUrl: "https://test.servicestack.net")
+
+        let request = ThrowValidation()
+        request.email = "invalidemail"
+
+        do {
+            let response = try client.post(request)
+            #expect(response == nil)
+            Issue.record("Should throw")
+        } catch let responseError as NSError {
+            #expect(responseError != nil)
+
+            let status: ResponseStatus = responseError.responseStatus
+            #expect(status.errors.count == 3)
+
+            #expect(status.errorCode! == status.errors[0].errorCode!)
+            #expect(status.message! == status.errors[0].message!)
+
+            #expect(status.errors[0].errorCode! == "InclusiveBetween")
+            #expect(status.errors[0].message! == "'Age' must be between 1 and 120. You entered 0.")
+            #expect(status.errors[0].fieldName! == "Age")
+
+            #expect(status.errors[1].errorCode! == "NotEmpty")
+            #expect(status.errors[1].message! == "'Required' must not be empty.")
+            #expect(status.errors[1].fieldName! == "Required")
+
+            #expect(status.errors[2].errorCode! == "Email")
+            #expect(status.errors[2].message! == "'Email' is not a valid email address.")
+            #expect(status.errors[2].fieldName! == "Email")
+        }
+    }
+
+    @Test func test_Does_handle_ValidationException_Async() async throws {
+        let client = JsonServiceClient(baseUrl: "https://test.servicestack.net")
+
+        let request = ThrowValidation()
+        request.email = "invalidemail"
+
+        do {
+            let response = try await client.postAsync(request)
+            #expect(response == nil)
+            Issue.record("Should throw")
+        } catch let responseError as NSError {
+            #expect(responseError != nil)
+
+            let status: ResponseStatus = responseError.responseStatus
+            #expect(status.errors.count == 3)
+
+            #expect(status.errorCode! == status.errors[0].errorCode!)
+            #expect(status.message! == status.errors[0].message!)
+
+            #expect(status.errors[0].errorCode! == "InclusiveBetween")
+            #expect(status.errors[0].message! == "'Age' must be between 1 and 120. You entered 0.")
+            #expect(status.errors[0].fieldName! == "Age")
+
+            #expect(status.errors[1].errorCode! == "NotEmpty")
+            #expect(status.errors[1].message! == "'Required' must not be empty.")
+            #expect(status.errors[1].fieldName! == "Required")
+
+            #expect(status.errors[2].errorCode! == "Email")
+            #expect(status.errors[2].message! == "'Email' is not a valid email address.")
+            #expect(status.errors[2].fieldName! == "Email")
+        }
+    }
+
+    @Test func test_Can_POST_valid_ThrowValidation_request() {
+        let client = JsonServiceClient(baseUrl: "https://test.servicestack.net")
+
+        let request = ThrowValidation()
+        request.age = 21
+        request.required = "foo"
+        request.email = "my@gmail.com"
+
+        do {
+            let response = try client.post(request)
+            #expect(response.age! == request.age!)
+            #expect(response.required! == request.required!)
+            #expect(response.email! == request.email!)
+        } catch {
+            Issue.record("Error: \(error)")
+        }
+    }
+
+    @Test func test_Can_send_ReturnVoid() {
+        let client = JsonServiceClient(baseUrl: "https://test.servicestack.net")
+
+        var methods = [String]()
+
+        client.requestFilter = { (req: NSMutableURLRequest) in methods.append(req.httpMethod!) }
+
+        do {
+            try client.get(HelloReturnVoid())
+            #expect(methods.last == HttpMethods.Get)
+            try client.post(HelloReturnVoid())
+            #expect(methods.last == HttpMethods.Post)
+            try client.put(HelloReturnVoid())
+            #expect(methods.last == HttpMethods.Put)
+            try client.delete(HelloReturnVoid())
+            #expect(methods.last == HttpMethods.Delete)
+        } catch {
+            Issue.record("Error: \(error)")
+        }
+    }
+
+    @Test func test_Can_send_ReturnVoid_Async() async throws {
+        let client = JsonServiceClient(baseUrl: "https://test.servicestack.net")
+
+        var methods = [String]()
+
+        client.requestFilter = { (req: NSMutableURLRequest) in methods.append(req.httpMethod!) }
+
+        _ = try await client.getAsync(HelloReturnVoid())
+        #expect(methods.last == HttpMethods.Get)
+
+        _ = try await client.postAsync(HelloReturnVoid())
+        #expect(methods.last == HttpMethods.Get)
+    }
+
+    @Test func test_Can_handle_failed_Auth() {
+        let client = JsonServiceClient(baseUrl: "https://test.servicestack.net")
+
+        do {
+            let request = Authenticate()
+            request.provider = "credentials"
+            request.userName = "test"
+            request.password = "invalid"
+            try client.post(request)
+        } catch let responseError as NSError {
+            #expect(responseError != nil)
+
+            // Swift Bug: 401 returns null response
+            #expect(responseError.responseStatus.errorCode == "Unauthorized")
+        }
+    }
+
+    @Test func test_Can_handle_failed_Auth_Async() async throws {
+        let client = JsonServiceClient(baseUrl: "https://test.servicestack.net")
+
+        let request = Authenticate()
+        request.provider = "credentials"
+        request.userName = "test"
+        request.password = "invalid"
+        do {
+            _ = try await client.postAsync(request)
+            Issue.record("Should throw")
+        } catch let responseError as NSError {
+            #expect(responseError != nil)
+
+            // Swift Bug: 401 returns null response
+            #expect(responseError.responseStatus.errorCode == "Unauthorized")
+        }
     }
 
 
