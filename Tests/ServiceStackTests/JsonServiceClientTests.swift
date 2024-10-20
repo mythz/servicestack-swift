@@ -58,7 +58,7 @@ final class JsonServiceClientTests : @unchecked Sendable {
         do {
             let url = client.createUrl(dto: request)
             print("url: \(url)")
-            let response: AllTypes = try client.get(url)
+            let response: AllTypes = try client.get(url:url)
 
             assertAllTypes(response, expected: request)
         } catch {
@@ -85,11 +85,10 @@ final class JsonServiceClientTests : @unchecked Sendable {
         self.assertHelloAllTypesResponse(r, expected: request)
     }
 
-    @Test func test_Does_handle_404_Error() {
+    func test_Does_handle_404_Error() {
         let client = JsonServiceClient(baseUrl: "https://test.servicestack.net")
 
         var globalError: NSError? = nil
-        JsonServiceClient.Global.onError = { globalError = $0 }
 
         var localError: NSError?
         client.onError = { localError = $0 }
@@ -99,6 +98,9 @@ final class JsonServiceClientTests : @unchecked Sendable {
         request.message = "not here"
 
         do {
+            JsonServiceClient.Global.onError = { globalError = $0 }
+            defer { JsonServiceClient.Global.reset() }
+
             let response = try client.put(request)
             #expect(response == nil)
         } catch let responseError as NSError {
@@ -114,10 +116,11 @@ final class JsonServiceClientTests : @unchecked Sendable {
     }
 
     @Test func test_Does_handle_404_Error_Async() async throws {
+        test_Does_handle_404_Error() // Race condition with parallel tests and Global.onError
+        
         let client = JsonServiceClient(baseUrl: "https://test.servicestack.net")
 
         var globalError: NSError?
-        JsonServiceClient.Global.onError = { globalError = $0 }
 
         var localError: NSError?
         client.onError = { localError = $0 }
@@ -127,6 +130,9 @@ final class JsonServiceClientTests : @unchecked Sendable {
         request.message = "not here"
 
         do {
+            JsonServiceClient.Global.onError = { globalError = $0 }
+            defer { JsonServiceClient.Global.reset() }
+            
             let response = try await client.putAsync(request)
             #expect(response == nil)
         } catch let responseError as NSError {
@@ -285,7 +291,8 @@ final class JsonServiceClientTests : @unchecked Sendable {
         request.userName = "test"
         request.password = "invalid"
         do {
-            _ = try await client.postAsync(request)
+            let response = try await client.postAsync(request)
+            Inspect.printDump(response)
             Issue.record("Should throw")
         } catch let responseError as NSError {
             #expect(responseError != nil)

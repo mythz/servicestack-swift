@@ -58,7 +58,11 @@ public protocol ServiceClient {
     func getRefreshTokenCookie() -> String?
 }
 
-@available(macOS 12.0, iOS 15.0, watchOS 8.0, tvOS 15.0, *)
+func toURL(_ url:String) -> URL {
+    return URL(string: url)!
+}
+
+@available(macOS 13.0, iOS 15.0, watchOS 8.0, tvOS 15.0, *)
 open class JsonServiceClient : NSObject, @unchecked Sendable, ServiceClient, IHasBearerToken, IHasSessionId, IHasVersion {
     open var baseUrl: String
     open var replyUrl: String
@@ -89,13 +93,18 @@ open class JsonServiceClient : NSObject, @unchecked Sendable, ServiceClient, IHa
         nonisolated(unsafe) public static var requestFilter: ((NSMutableURLRequest) -> Void)?
         nonisolated(unsafe) public static var responseFilter: ((URLResponse) -> Void)?
         nonisolated(unsafe) public static var onError: ((NSError) -> Void)?
+        public static func reset() {
+            requestFilter = nil
+            responseFilter = nil
+            onError = nil
+        }
     }
 
     public init(baseUrl: String) {
         self.baseUrl = baseUrl.hasSuffix("/") ? baseUrl : baseUrl + "/"
         replyUrl = self.baseUrl + "json/reply/"
-        let url = NSURL(string: self.baseUrl)
-        domain = url!.host!
+        let url = toURL(self.baseUrl)
+        domain = url.host!
     }
 
     open func createSession() -> URLSession {
@@ -188,12 +197,13 @@ open class JsonServiceClient : NSObject, @unchecked Sendable, ServiceClient, IHa
         return nil
     }
 
-    open func createUrl<T: Codable>(dto: T, query: [String: String] = [:]) -> String {
-        var requestUrl = replyUrl + String(describing: T.self)
+    open func createUrl<T: Codable>(dto: T, query: [String: String] = [:]) -> URL {
+        let requestUrl = replyUrl + String(describing: T.self)
 
         populateRequestDto(dto)
+        
+        var queryItems:[URLQueryItem] = []
 
-        var sb = ""
         for prop in AnyEncodable.properties(dto) {
             do {
                 var rawValue = prop.value.value as? String
@@ -202,9 +212,7 @@ open class JsonServiceClient : NSObject, @unchecked Sendable, ServiceClient, IHa
                 }
                 if let jsvValue = rawValue {
                     if jsvValue != "[]" && jsvValue != "{}" {
-                        let encVal = jsvValue.urlEncode()
-                        sb += sb.count == 0 ? "?" : "&"
-                        sb += "\(prop.key)=\(encVal ?? "")"
+                        queryItems.append(URLQueryItem(name:prop.key, value:jsvValue))
                     }
                 }
             } catch let e {
@@ -213,13 +221,11 @@ open class JsonServiceClient : NSObject, @unchecked Sendable, ServiceClient, IHa
         }
 
         for (key, value) in query {
-            sb += sb.count == 0 ? "?" : "&"
-            sb += "\(key)=\(value.urlEncode()!)"
+            queryItems.append(URLQueryItem(name:key, value:value))
         }
 
-        requestUrl += sb
-
-        return requestUrl
+        let url = URL(string:requestUrl)!.appending(queryItems: queryItems)
+        return url
     }
 
     func populateRequestDto<T: Codable>(_ request: T) {
@@ -240,7 +246,11 @@ open class JsonServiceClient : NSObject, @unchecked Sendable, ServiceClient, IHa
         }
     }
 
-    open func createRequestDto<T: Codable>(url: String, httpMethod: String, request: T?) -> NSMutableURLRequest {
+    open func createRequestDto<T: Codable>(_ url: String, httpMethod: String, request: T?) -> NSMutableURLRequest {
+        return createRequestDto(url: toURL(url), httpMethod: httpMethod, request: request)
+    }
+
+    open func createRequestDto<T: Codable>(url: URL, httpMethod: String, request: T?) -> NSMutableURLRequest {
         var contentType: String?
         var requestBody: Data?
 
@@ -253,12 +263,15 @@ open class JsonServiceClient : NSObject, @unchecked Sendable, ServiceClient, IHa
         return createRequest(url: url, httpMethod: httpMethod, requestType: contentType, requestBody: requestBody)
     }
 
-    open func createRequest(url: String, httpMethod: String, requestType: String? = nil, requestBody: Data? = nil) -> NSMutableURLRequest {
-        let nsUrl = NSURL(string: url)!
+    open func createRequest(_ url: String, httpMethod: String, requestType: String? = nil, requestBody: Data? = nil) -> NSMutableURLRequest {
+        return createRequest(url: toURL(url), httpMethod: httpMethod, requestType: requestType, requestBody: requestBody)
+    }
+
+    open func createRequest(url: URL, httpMethod: String, requestType: String? = nil, requestBody: Data? = nil) -> NSMutableURLRequest {
 
         let req = timeout == nil
-            ? NSMutableURLRequest(url: nsUrl as URL)
-            : NSMutableURLRequest(url: nsUrl as URL, cachePolicy: cachePolicy, timeoutInterval: timeout!)
+            ? NSMutableURLRequest(url: url)
+            : NSMutableURLRequest(url: url, cachePolicy: cachePolicy, timeoutInterval: timeout!)
 
         req.httpMethod = httpMethod
         req.setValue("application/json", forHTTPHeaderField: "Accept")
@@ -311,9 +324,26 @@ open class JsonServiceClient : NSObject, @unchecked Sendable, ServiceClient, IHa
         return dto
     }
     
+    @discardableResult
+    open func sendAsync<T: Codable>(intoResponse: T, request: NSMutableURLRequest) async throws-> T {
+        guard let (data, response) = try await getDataAsync(request: request as URLRequest, retryIf: retryAfterReauth) else {
+            return Factory<T>.create()
+        }
+        if data.isEmpty {
+            return Factory<T>.create()
+        }
+        let dto = try handleResponse(intoResponse: intoResponse, data: data, response: response)
+        return dto
+    }
+    
     open func getData(url: String) throws -> (Data, HTTPURLResponse)? {
-        let urlRequest = createRequest(url: resolveUrl(url), httpMethod: HttpMethods.Get)
+        let urlRequest = createRequest(url: toURL(resolveUrl(url)), httpMethod: HttpMethods.Get)
         return try getData(request: urlRequest as URLRequest)
+    }
+
+    open func getDataAsync(url: String) async throws -> (Data, HTTPURLResponse)? {
+        let urlRequest = createRequest(url: toURL(resolveUrl(url)), httpMethod: HttpMethods.Get)
+        return try await getDataAsync(request: urlRequest as URLRequest)
     }
 
     open func getData(request: URLRequest, retryIf:((HTTPURLResponse) -> Bool)? = nil) throws -> (Data, HTTPURLResponse)? {
@@ -344,11 +374,29 @@ open class JsonServiceClient : NSObject, @unchecked Sendable, ServiceClient, IHa
         return nil
     }
     
+    open func getDataAsync(request: URLRequest, retryIf:((HTTPURLResponse) async throws -> Bool)? = nil) async throws -> (Data, HTTPURLResponse)? {
+        let (data, res) = try await createSession().data(for: request)
+
+        if let response = res as? HTTPURLResponse {
+            if let ex = self.createIfError(response, data) {
+                if let fn = retryIf {
+                    let success = try await fn(response)
+                    if success {
+                        return try await getDataAsync(request: request)
+                    }
+                }
+                throw ex
+            }
+            return (data,response)
+        }
+        return nil
+    }
+
     open func fetchNewAccessToken() -> Bool {
         let jwtRequest = GetAccessToken()
         jwtRequest.refreshToken = self.refreshToken
         let request = self.createRequestDto(
-            url: self.replyUrl.combinePath(Reflect<GetAccessToken>.typeName),
+            url: toURL(self.replyUrl.combinePath(Reflect<GetAccessToken>.typeName)),
             httpMethod: HttpMethods.Post,
             request: jwtRequest)
         do {
@@ -364,57 +412,11 @@ open class JsonServiceClient : NSObject, @unchecked Sendable, ServiceClient, IHa
         }
     }
 
-    @discardableResult
-    open func sendAsync<T: Codable>(intoResponse: T, request: NSMutableURLRequest) async throws-> T {
-        do {
-            let result = try await getDataAsync(request: request as URLRequest, retryIf: retryAfterReauthAsync)
-            guard let (data,response) = result else {
-                return Factory<T>.create()
-            }
-            let dto = try self.handleResponse(intoResponse: intoResponse, data: data, response: response)
-            return dto
-        } catch {
-            throw self.handleError(nsError: error as NSError)
-        }
-    }
-    
-    open func getDataAsync(request: URLRequest, retryIf:((HTTPURLResponse) async throws -> Bool)? = nil) async throws -> (Data, HTTPURLResponse)? {
-        do {
-            let (data, ret) = try await createSession().data(for: request)
-            if let response = ret as? HTTPURLResponse {
-                if let ex = self.createIfError(response, data) {
-                    if let fn = retryIf {
-                        do {
-                            if try await fn(response) {
-                                let retryResponse = try await self.getDataAsync(request: request)
-                                return retryResponse
-                            }
-                        } catch {
-                            throw error
-                        }
-                    } else {
-                        throw ex
-                    }
-                } else {
-                    return (data, response)
-                }
-            }
-        } catch {
-            throw self.handleError(nsError: error as NSError)
-        }
-        return nil
-    }
-
-    open func getDataAsync(url: String) async throws -> (Data, HTTPURLResponse)? {
-        let urlRequest = createRequest(url: resolveUrl(url), httpMethod: HttpMethods.Get)
-        return try await getDataAsync(request: urlRequest as URLRequest)
-    }
-
     open func fetchNewAccessTokenAsync() async throws -> Bool {
         let jwtRequest = GetAccessToken()
         jwtRequest.refreshToken = self.refreshToken
         let request = self.createRequestDto(
-            url: self.replyUrl.combinePath(Reflect<GetAccessToken>.typeName),
+            url: toURL(self.replyUrl.combinePath(Reflect<GetAccessToken>.typeName)),
             httpMethod: HttpMethods.Post,
             request: jwtRequest)
         
@@ -434,7 +436,7 @@ open class JsonServiceClient : NSObject, @unchecked Sendable, ServiceClient, IHa
     }
 
     open func getCookies() -> [String:String] {
-        let ret = urlCookies(URL(string: baseUrl)!)
+        let ret = urlCookies(toURL(baseUrl))
         return ret
     }
     
@@ -450,9 +452,9 @@ open class JsonServiceClient : NSObject, @unchecked Sendable, ServiceClient, IHa
 
     open func resolveUrl(_ relativeOrAbsoluteUrl: String) -> String {
         return relativeOrAbsoluteUrl.hasPrefix("http:")
-            || relativeOrAbsoluteUrl.hasPrefix("https:")
-            ? relativeOrAbsoluteUrl
-            : baseUrl.combinePath(relativeOrAbsoluteUrl)
+                     || relativeOrAbsoluteUrl.hasPrefix("https:")
+                     ? relativeOrAbsoluteUrl
+                     : baseUrl.combinePath(relativeOrAbsoluteUrl)
     }
 
     open func hasRequestBody(httpMethod: String) -> Bool {
@@ -481,7 +483,7 @@ open class JsonServiceClient : NSObject, @unchecked Sendable, ServiceClient, IHa
     open func send<T: IReturn>(_ request: T) throws -> T.Return where T: Codable {
         let httpMethod = getSendMethod(request)
         if hasRequestBody(httpMethod: httpMethod) {
-            return try send(intoResponse: Factory<T.Return>.create(), request: createRequestDto(url: replyUrl.combinePath(Reflect<T>.typeName), httpMethod: httpMethod, request: request))
+            return try send(intoResponse: Factory<T.Return>.create(), request: createRequestDto(url: toURL(replyUrl.combinePath(Reflect<T>.typeName)), httpMethod: httpMethod, request: request))
         }
 
         return try send(intoResponse: Factory<T.Return>.create(), request: createRequest(url: createUrl(dto: request), httpMethod: httpMethod))
@@ -490,7 +492,7 @@ open class JsonServiceClient : NSObject, @unchecked Sendable, ServiceClient, IHa
     open func send<T: IReturnVoid>(_ request: T) throws where T: Codable {
         let httpMethod = getSendMethod(request)
         if hasRequestBody(httpMethod: httpMethod) {
-            try send(intoResponse: ReturnVoid.void, request: createRequestDto(url: replyUrl.combinePath(Reflect<T>.typeName), httpMethod: httpMethod, request: request))
+            try send(intoResponse: ReturnVoid.void, request: createRequestDto(url: toURL(replyUrl.combinePath(Reflect<T>.typeName)), httpMethod: httpMethod, request: request))
         } else {
             try send(intoResponse: ReturnVoid.void, request: createRequest(url: createUrl(dto: request), httpMethod: httpMethod))
         }
@@ -499,14 +501,14 @@ open class JsonServiceClient : NSObject, @unchecked Sendable, ServiceClient, IHa
     open func sendAsync<T: IReturn>(_ request: T) async throws -> T.Return where T: Codable {
         let httpMethod = getSendMethod(request)
         return hasRequestBody(httpMethod: httpMethod)
-            ? try await sendAsync(intoResponse: Factory<T.Return>.create(), request: createRequestDto(url: replyUrl.combinePath(Reflect<T>.typeName), httpMethod: httpMethod, request: request))
+            ? try await sendAsync(intoResponse: Factory<T.Return>.create(), request: createRequestDto( replyUrl.combinePath(Reflect<T>.typeName), httpMethod: httpMethod, request: request))
             : try await sendAsync(intoResponse: Factory<T.Return>.create(), request: createRequest(url: createUrl(dto: request), httpMethod: httpMethod))
     }
 
     open func sendAsync<T: IReturnVoid>(_ request: T) async throws -> Void where T: Codable {
         let httpMethod = getSendMethod(request)
         _ = hasRequestBody(httpMethod: httpMethod)
-            ? try await sendAsync(intoResponse: ReturnVoid.void, request: createRequestDto(url: replyUrl.combinePath(Reflect<T>.typeName), httpMethod: HttpMethods.Post, request: request))
+        ? try await sendAsync(intoResponse: ReturnVoid.void, request: createRequestDto(url: toURL(replyUrl.combinePath(Reflect<T>.typeName)), httpMethod: HttpMethods.Post, request: request))
             : try await sendAsync(intoResponse: ReturnVoid.void, request: createRequest(url: createUrl(dto: request), httpMethod: HttpMethods.Get))
     }
 
@@ -523,7 +525,11 @@ open class JsonServiceClient : NSObject, @unchecked Sendable, ServiceClient, IHa
     }
 
     open func get<T: Codable>(_ relativeUrl: String) throws -> T {
-        return try send(intoResponse: Factory<T>.create(), request: createRequest(url: resolveUrl(relativeUrl), httpMethod: HttpMethods.Get))
+        return try send(intoResponse: Factory<T>.create(), request: createRequest(resolveUrl(relativeUrl), httpMethod: HttpMethods.Get))
+    }
+
+    open func get<T: Codable>(url: URL) throws -> T {
+        return try send(intoResponse: Factory<T>.create(), request: createRequest(url:url, httpMethod: HttpMethods.Get))
     }
 
     open func getAsync<T: IReturn>(_ request: T) async throws -> T.Return where T: Codable {
@@ -539,63 +545,83 @@ open class JsonServiceClient : NSObject, @unchecked Sendable, ServiceClient, IHa
     }
 
     open func getAsync<T: Codable>(_ relativeUrl: String) async throws -> T {
-        return try await sendAsync(intoResponse: Factory<T>.create(), request: createRequest(url: resolveUrl(relativeUrl), httpMethod: HttpMethods.Get))
+        return try await sendAsync(intoResponse: Factory<T>.create(), request: createRequest( resolveUrl(relativeUrl), httpMethod: HttpMethods.Get))
+    }
+
+    open func getAsync<T: Codable>(url: URL) async throws -> T {
+        return try await sendAsync(intoResponse: Factory<T>.create(), request: createRequest(
+            url:url, httpMethod: HttpMethods.Get))
     }
 
     @discardableResult
     open func post<T: IReturn>(_ request: T) throws -> T.Return where T: Codable {
-        return try send(intoResponse: Factory<T.Return>.create(), request: createRequestDto(url: replyUrl.combinePath(Reflect<T>.typeName), httpMethod: HttpMethods.Post, request: request))
+        return try send(intoResponse: Factory<T.Return>.create(), request: createRequestDto( replyUrl.combinePath(Reflect<T>.typeName), httpMethod: HttpMethods.Post, request: request))
     }
 
     open func post<T: IReturnVoid>(_ request: T) throws -> Void where T: Codable {
-        try send(intoResponse: ReturnVoid.void, request: createRequestDto(url: replyUrl.combinePath(Reflect<T>.typeName), httpMethod: HttpMethods.Post, request: request))
+        try send(intoResponse: ReturnVoid.void, request: createRequestDto( replyUrl.combinePath(Reflect<T>.typeName), httpMethod: HttpMethods.Post, request: request))
     }
 
     @discardableResult
     open func post<Response: Codable, Request: Codable>(_ relativeUrl: String, request: Request?) throws -> Response {
-        return try send(intoResponse: Factory<Response>.create(), request: createRequestDto(url: resolveUrl(relativeUrl), httpMethod: HttpMethods.Post, request: request))
+        return try send(intoResponse: Factory<Response>.create(), request: createRequestDto( resolveUrl(relativeUrl), httpMethod: HttpMethods.Post, request: request))
     }
 
     @discardableResult
     open func postAsync<T: IReturn>(_ request: T) async throws -> T.Return where T: Codable {
-        return try await sendAsync(intoResponse: Factory<T.Return>.create(), request: createRequestDto(url: replyUrl.combinePath(Reflect<T>.typeName), httpMethod: HttpMethods.Post, request: request))
+        return try await sendAsync(intoResponse: Factory<T.Return>.create(), request: createRequestDto(
+            replyUrl.combinePath(Reflect<T>.typeName), httpMethod: HttpMethods.Post, request: request))
     }
 
     open func postAsync<T: IReturnVoid>(_ request: T) async throws -> Void where T: Codable {
-        _ = try await sendAsync(intoResponse: ReturnVoid.void, request: createRequestDto(url: replyUrl.combinePath(Reflect<T>.typeName), httpMethod: HttpMethods.Post, request: request))
+        _ = try await sendAsync(intoResponse: ReturnVoid.void, request: createRequestDto( replyUrl.combinePath(Reflect<T>.typeName), httpMethod: HttpMethods.Post, request: request))
     }
 
     @discardableResult
     open func postAsync<Response: Codable, Request: Codable>(_ relativeUrl: String, request: Request?) async throws -> Response {
-        return try await sendAsync(intoResponse: Factory<Response>.create(), request: createRequestDto(url: resolveUrl(relativeUrl), httpMethod: HttpMethods.Post, request: request))
+        return try await sendAsync(intoResponse: Factory<Response>.create(), request: createRequestDto( resolveUrl(relativeUrl), httpMethod: HttpMethods.Post, request: request))
     }
 
     @discardableResult
     open func put<T: IReturn>(_ request: T) throws -> T.Return where T: Codable {
-        return try send(intoResponse: Factory<T.Return>.create(), request: createRequestDto(url: replyUrl.combinePath(Reflect<T>.typeName), httpMethod: HttpMethods.Put, request: request))
+        return try send(intoResponse: Factory<T.Return>.create(), request: createRequestDto(
+            replyUrl.combinePath(Reflect<T>.typeName), httpMethod: HttpMethods.Put, request: request))
     }
 
     open func put<T: IReturnVoid>(_ request: T) throws -> Void where T: Codable {
-        try send(intoResponse: ReturnVoid.void, request: createRequestDto(url: replyUrl.combinePath(Reflect<T>.typeName), httpMethod: HttpMethods.Put, request: request))
+        try send(intoResponse: ReturnVoid.void, request: createRequestDto(replyUrl.combinePath(Reflect<T>.typeName), httpMethod: HttpMethods.Put, request: request))
     }
 
     @discardableResult
     open func put<Response: Codable, Request: Codable>(_ relativeUrl: String, request: Request?) throws -> Response {
-        return try send(intoResponse: Factory<Response>.create(), request: createRequestDto(url: resolveUrl(relativeUrl), httpMethod: HttpMethods.Put, request: request))
+        return try send(intoResponse: Factory<Response>.create(), request: createRequestDto(
+            resolveUrl(relativeUrl), httpMethod: HttpMethods.Put, request: request))
+    }
+
+    @discardableResult
+    open func put<Response: Codable, Request: Codable>(url: URL, request: Request?) throws -> Response {
+        return try send(intoResponse: Factory<Response>.create(), request: createRequestDto(
+            url:url, httpMethod: HttpMethods.Put, request: request))
     }
 
     @discardableResult
     open func putAsync<T: IReturn>(_ request: T) async throws -> T.Return where T: Codable {
-        return try await sendAsync(intoResponse: Factory<T.Return>.create(), request: createRequestDto(url: replyUrl.combinePath(Reflect<T>.typeName), httpMethod: HttpMethods.Put, request: request))
+        return try await sendAsync(intoResponse: Factory<T.Return>.create(), request: createRequestDto(
+            replyUrl.combinePath(Reflect<T>.typeName), httpMethod: HttpMethods.Put, request: request))
     }
 
     open func putAsync<T: IReturnVoid>(_ request: T) async throws -> Void where T: Codable {
-        _ = try await sendAsync(intoResponse: ReturnVoid.void, request: createRequestDto(url: replyUrl.combinePath(Reflect<T>.typeName), httpMethod: HttpMethods.Put, request: request))
+        _ = try await sendAsync(intoResponse: ReturnVoid.void, request: createRequestDto( replyUrl.combinePath(Reflect<T>.typeName), httpMethod: HttpMethods.Put, request: request))
     }
 
     @discardableResult
     open func putAsync<Response: Codable, Request: Codable>(_ relativeUrl: String, request: Request?) async throws -> Response {
-        return try await sendAsync(intoResponse: Factory<Response>.create(), request: createRequestDto(url: resolveUrl(relativeUrl), httpMethod: HttpMethods.Put, request: request))
+        return try await sendAsync(intoResponse: Factory<Response>.create(), request: createRequestDto( resolveUrl(relativeUrl), httpMethod: HttpMethods.Put, request: request))
+    }
+
+    @discardableResult
+    open func putAsync<Response: Codable, Request: Codable>(url: URL, request: Request?) async throws -> Response {
+        return try await sendAsync(intoResponse: Factory<Response>.create(), request: createRequestDto(url: url, httpMethod: HttpMethods.Put, request: request))
     }
 
     @discardableResult
@@ -614,7 +640,12 @@ open class JsonServiceClient : NSObject, @unchecked Sendable, ServiceClient, IHa
 
     @discardableResult
     open func delete<T: Codable>(_ relativeUrl: String) throws -> T {
-        return try send(intoResponse: Factory<T>.create(), request: createRequest(url: resolveUrl(relativeUrl), httpMethod: HttpMethods.Delete))
+        return try send(intoResponse: Factory<T>.create(), request: createRequest(resolveUrl(relativeUrl), httpMethod: HttpMethods.Delete))
+    }
+
+    @discardableResult
+    open func delete<T: Codable>(url: URL) throws -> T {
+        return try send(intoResponse: Factory<T>.create(), request: createRequest(url:url, httpMethod: HttpMethods.Delete))
     }
 
     @discardableResult
@@ -633,39 +664,57 @@ open class JsonServiceClient : NSObject, @unchecked Sendable, ServiceClient, IHa
 
     @discardableResult
     open func deleteAsync<T: Codable>(_ relativeUrl: String) async throws -> T {
-        return try await sendAsync(intoResponse: Factory<T>.create(), request: createRequest(url: resolveUrl(relativeUrl), httpMethod: HttpMethods.Delete))
+        return try await sendAsync(intoResponse: Factory<T>.create(), request: createRequest(resolveUrl(relativeUrl), httpMethod: HttpMethods.Delete))
+    }
+
+    @discardableResult
+    open func deleteAsync<T: Codable>(url:URL) async throws -> T {
+        return try await sendAsync(intoResponse: Factory<T>.create(), request: createRequest(
+            url:url, httpMethod: HttpMethods.Delete))
     }
 
     @discardableResult
     open func patch<T: IReturn>(_ request: T) throws -> T.Return where T: Codable {
-        return try send(intoResponse: Factory<T.Return>.create(), request: createRequestDto(url: replyUrl.combinePath(Reflect<T>.typeName), httpMethod: HttpMethods.Patch, request: request))
+        return try send(intoResponse: Factory<T.Return>.create(), request: createRequestDto(
+            replyUrl.combinePath(Reflect<T>.typeName), httpMethod: HttpMethods.Patch, request: request))
     }
 
     open func patch<T: IReturnVoid>(_ request: T) throws -> Void where T: Codable {
-        try send(intoResponse: ReturnVoid.void, request: createRequestDto(url: replyUrl.combinePath(Reflect<T>.typeName), httpMethod: HttpMethods.Patch, request: request))
+        try send(intoResponse: ReturnVoid.void, request: createRequestDto( replyUrl.combinePath(Reflect<T>.typeName), httpMethod: HttpMethods.Patch, request: request))
     }
 
     @discardableResult
     open func patch<Response: Codable, Request: Codable>(_ relativeUrl: String, request: Request?) throws -> Response {
-        return try send(intoResponse: Factory<Response>.create(), request: createRequestDto(url: resolveUrl(relativeUrl), httpMethod: HttpMethods.Patch, request: request))
+        return try send(intoResponse: Factory<Response>.create(), request: createRequestDto( resolveUrl(relativeUrl), httpMethod: HttpMethods.Patch, request: request))
+    }
+
+    @discardableResult
+    open func patch<Response: Codable, Request: Codable>(url:URL, request: Request?) throws -> Response {
+        return try send(intoResponse: Factory<Response>.create(), request: createRequestDto(
+            url:url, httpMethod: HttpMethods.Patch, request: request))
     }
 
     @discardableResult
     open func patchAsync<T: IReturn>(_ request: T) async throws -> T.Return where T: Codable {
-        return try await sendAsync(intoResponse: Factory<T.Return>.create(), request: createRequestDto(url: replyUrl.combinePath(Reflect<T>.typeName), httpMethod: HttpMethods.Patch, request: request))
+        return try await sendAsync(intoResponse: Factory<T.Return>.create(), request: createRequestDto( replyUrl.combinePath(Reflect<T>.typeName), httpMethod: HttpMethods.Patch, request: request))
     }
 
     open func patchAsync<T: IReturnVoid>(_ request: T) async throws -> Void where T: Codable {
-        _ = try await sendAsync(intoResponse: ReturnVoid.void, request: createRequestDto(url: replyUrl.combinePath(Reflect<T>.typeName), httpMethod: HttpMethods.Patch, request: request))
+        _ = try await sendAsync(intoResponse: ReturnVoid.void, request: createRequestDto( replyUrl.combinePath(Reflect<T>.typeName), httpMethod: HttpMethods.Patch, request: request))
     }
 
     @discardableResult
     open func patchAsync<Response: Codable, Request: Codable>(_ relativeUrl: String, request: Request?) async throws -> Response {
-        return try await sendAsync(intoResponse: Factory<Response>.create(), request: createRequestDto(url: resolveUrl(relativeUrl), httpMethod: HttpMethods.Patch, request: request))
+        return try await sendAsync(intoResponse: Factory<Response>.create(), request: createRequestDto( resolveUrl(relativeUrl), httpMethod: HttpMethods.Patch, request: request))
+    }
+
+    @discardableResult
+    open func patchAsync<Response: Codable, Request: Codable>(url:URL, request: Request?) async throws -> Response {
+        return try await sendAsync(intoResponse: Factory<Response>.create(), request: createRequestDto( url:url, httpMethod: HttpMethods.Patch, request: request))
     }
 }
 
-@available(macOS 12.0, iOS 15.0, watchOS 8.0, tvOS 15.0, *)
+@available(macOS 13.0, iOS 15.0, watchOS 8.0, tvOS 15.0, *)
 extension JsonServiceClient: URLSessionDelegate {
     public static func toHostsMap(_ urls: [String]) -> [String: Int] {
         var to: [String: Int] = [:]
