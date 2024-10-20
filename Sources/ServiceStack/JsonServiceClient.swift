@@ -768,3 +768,15 @@ public struct HttpMethods {
     public static let Options = "OPTIONS"
     public static let Patch = "PATCH"
 }
+
+extension NSMutableURLRequest {
+    public var method: String {
+        get {
+#if os(Linux)
+        return httpMethod!
+#else
+        return httpMethod
+#endif
+        }
+    }
+}
