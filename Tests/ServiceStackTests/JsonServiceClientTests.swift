@@ -89,7 +89,7 @@ final class JsonServiceClientTests : @unchecked Sendable {
         let client = JsonServiceClient(baseUrl: "https://test.servicestack.net")
 
         var globalError: NSError? = nil
-        //Global.onError = { globalError = $0 }
+        JsonServiceClient.Global.onError = { globalError = $0 }
 
         var localError: NSError?
         client.onError = { localError = $0 }
@@ -117,7 +117,7 @@ final class JsonServiceClientTests : @unchecked Sendable {
         let client = JsonServiceClient(baseUrl: "https://test.servicestack.net")
 
         var globalError: NSError?
-        //Global.onError = { globalError = $0 }
+        JsonServiceClient.Global.onError = { globalError = $0 }
 
         var localError: NSError?
         client.onError = { localError = $0 }
@@ -257,7 +257,7 @@ final class JsonServiceClientTests : @unchecked Sendable {
         #expect(methods.last == HttpMethods.Get)
 
         _ = try await client.postAsync(HelloReturnVoid())
-        #expect(methods.last == HttpMethods.Get)
+        #expect(methods.last == HttpMethods.Post)
     }
 
     @Test func test_Can_handle_failed_Auth() {

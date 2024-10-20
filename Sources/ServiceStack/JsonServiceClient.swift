@@ -86,9 +86,9 @@ open class JsonServiceClient : NSObject, @unchecked Sendable, ServiceClient, IHa
     }
 
     public struct Global {
-        nonisolated(unsafe) static var requestFilter: ((NSMutableURLRequest) -> Void)?
-        nonisolated(unsafe) static var responseFilter: ((URLResponse) -> Void)?
-        nonisolated(unsafe) static var onError: ((NSError) -> Void)?
+        nonisolated(unsafe) public static var requestFilter: ((NSMutableURLRequest) -> Void)?
+        nonisolated(unsafe) public static var responseFilter: ((URLResponse) -> Void)?
+        nonisolated(unsafe) public static var onError: ((NSError) -> Void)?
     }
 
     public init(baseUrl: String) {
