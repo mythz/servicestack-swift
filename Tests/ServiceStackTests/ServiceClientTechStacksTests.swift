@@ -80,42 +80,31 @@ final class ServiceClientTechStacksTests : @unchecked Sendable {
         }
     }
 
-    #if false // AutoQuery
-        func test_Can_call_FindTechnologies_AutoQuery_Service() {
-            let request = FindTechnologies<Technology>()
-            request.name = "ServiceStack"
+    @Test func Can_call_FindTechnologies_AutoQuery_Service() throws {
+        let request = FindTechnologies()
+        request.name = "ServiceStack"
 
-            let response = client.get(request)!
+        let response = try client.get(request)
 
-            XCTAssertEqual(response.results.count, 1)
-        }
+        #expect(response.results.count == 1)
+    }
 
-        func test_Can_call_FindTechnologies_AutoQuery_Service_Async() {
-            let asyncTest = expectation(description: "asyncTest")
+    @Test func Can_call_FindTechnologies_AutoQuery_Service_Async() async throws {
+        let request = FindTechnologies()
+        request.name = "ServiceStack"
 
-            let request = FindTechnologies<Technology>()
-            request.name = "ServiceStack"
+        let r = try await client.getAsync(request)
+        #expect(r.results.count == 1)
+    }
 
-            let response = client.getAsync(request)
-                .then(body: { (r: QueryResponse<Technology>) -> Void in
-                    XCTAssertEqual(r.results.count, 1)
-                    asyncTest.fulfill()
-                })
+    @Test func Can_call_FindTechnologies_AutoQuery_Implicit_Service() throws {
+        let request = FindTechnologies()
+        request.take = 5
 
-            waitForExpectationsWithTimeout(5, handler: { error in
-                XCTAssertNil(error, "Error")
-            })
-        }
+        let response = try client.get(request, query: ["DescriptionContains": "framework"])
 
-        func test_Can_call_FindTechnologies_AutoQuery_Implicit_Service() {
-            let request = FindTechnologies<Technology>()
-            request.take = 5
-
-            let response = client.get(request, query: ["DescriptionContains": "framework"])!
-
-            XCTAssertEqual(response.results.count, 5)
-        }
-    #endif
+        #expect(response.results.count == 5)
+    }
 
     /*
      * TEST HELPERS
