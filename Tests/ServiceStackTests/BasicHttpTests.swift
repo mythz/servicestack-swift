@@ -5,7 +5,7 @@ import Foundation
 #endif
 import ServiceStack
 
-final class AsyncHttpTests : @unchecked Sendable {
+final class BasicHttpTests : @unchecked Sendable {
     
     init() async throws {
         print("AsyncHttpTests.init()")
