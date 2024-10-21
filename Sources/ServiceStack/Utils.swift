@@ -11,6 +11,13 @@
 #endif
 import Foundation
 
+// signature matches the default Swift print so it overwrites the function throughout project
+func print(_ items: Any..., separator: String = " ", terminator: String = "\n") {
+    #if DEBUG
+    Swift.print(items, separator: separator, terminator: terminator)
+    #endif
+}
+
 public class Factory<T: Decodable> {
     public static func create() -> T {
         return try! T(from: EmptyDecoder.instance)

@@ -364,7 +364,7 @@ open class JsonServiceClient : NSObject, @unchecked Sendable, ServiceClient, IHa
     }
 
     open func getData(request: URLRequest, retryIf:((HTTPURLResponse) -> Bool)? = nil) throws -> (Data, HTTPURLResponse)? {
-        print("URL: \(String(describing: request.url))")
+        print("\(request.httpMethod ?? "") \(request.url?.absoluteString ?? "")")
         let dataTaskSync = createSession().dataTaskSync(request: request as URLRequest)
         lastTask = dataTaskSync.task
         let cb = dataTaskSync.callback
@@ -393,7 +393,7 @@ open class JsonServiceClient : NSObject, @unchecked Sendable, ServiceClient, IHa
     }
     
     open func getDataAsync(request: URLRequest, retryIf:((HTTPURLResponse) async throws -> Bool)? = nil) async throws -> (Data, HTTPURLResponse)? {
-        print("URL: \(String(describing: request.url))")
+        print("\(request.httpMethod ?? "") \(request.url?.absoluteString ?? "")")
         let (data, res) = try await createSession().data(for: request)
 
         if let response = res as? HTTPURLResponse {

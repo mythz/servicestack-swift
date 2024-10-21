@@ -63,7 +63,6 @@ final class AutoQueryTests : @unchecked Sendable {
 
         do {
             let url = client.createUrl(dto: request)
-            print("Request URL: \(url)")
             let response = try client.get(request)
 
             #expect(response.total == 1)
