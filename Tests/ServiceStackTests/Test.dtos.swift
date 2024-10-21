@@ -1,5 +1,5 @@
 /* Options:
-Date: 2024-10-21 13:57:24
+Date: 2024-10-21 14:05:17
 SwiftVersion: 5.0
 Version: 8.41
 Tip: To override a DTO option, remove "//" prefix before updating
@@ -10,7 +10,7 @@ BaseUrl: https://test.servicestack.net
 //AddServiceStackTypes: True
 //MakePropertiesOptional: True
 //IncludeTypes: 
-ExcludeTypes: QueryResponse`1,QueryBase`1,QueryBase`1,QueryBase,DummyTypes
+ExcludeTypes: QueryResponse`1,QueryBase`1,QueryBase`1,QueryBase,DummyTypes,MessageQuery
 //ExcludeGenericBaseTypes: False
 //AddResponseStatus: False
 //AddImplicitVersion: 
@@ -1592,32 +1592,6 @@ public class QueryPocoBase : QueryDb<OnlyDefinedInGenericType>, IReturn
 public class QueryPocoIntoBase : QueryDb2<OnlyDefinedInGenericTypeFrom, OnlyDefinedInGenericTypeInto>, IReturn
 {
     public typealias Return = QueryResponse<OnlyDefinedInGenericTypeInto>
-
-    public var id:Int?
-
-    required public init(){ super.init() }
-
-    private enum CodingKeys : String, CodingKey {
-        case id
-    }
-
-    required public init(from decoder: Decoder) throws {
-        try super.init(from: decoder)
-        let container = try decoder.container(keyedBy: CodingKeys.self)
-        id = try container.decodeIfPresent(Int.self, forKey: .id)
-    }
-
-    public override func encode(to encoder: Encoder) throws {
-        try super.encode(to: encoder)
-        var container = encoder.container(keyedBy: CodingKeys.self)
-        if id != nil { try container.encode(id, forKey: .id) }
-    }
-}
-
-// @Route("/message/query/{Id}", "GET")
-public class MessageQuery : QueryDb<MessageQuery>, IReturn
-{
-    public typealias Return = QueryResponse<MessageQuery>
 
     public var id:Int?
 

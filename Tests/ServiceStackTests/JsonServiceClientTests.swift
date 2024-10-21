@@ -365,13 +365,10 @@ final class JsonServiceClientTests : @unchecked Sendable {
         to.stringList = ["D", "E", "F"]
         to.byteArray = fromByteArray("QUJD") //base64(ABC)
         to.pocoArray.append(createPoco("pocoArray"))
-        if to.pocoList == nil { to.pocoList = [] }
-        to.pocoList!.append(createPoco("pocoList"))
-        if to.pocoLookup == nil { to.pocoLookup = [:] }
-        to.pocoLookup!["A"] = [createPoco("B"), createPoco("C")]
-        to.pocoLookup!["D"] = [createPoco("E"), createPoco("F")]
-        if to.pocoLookupMap == nil { to.pocoLookupMap = [:] }
-        to.pocoLookupMap!["A"] = [["B": createPoco("C"), "D": createPoco("E")]]
+        to.pocoList.append(createPoco("pocoList"))
+        to.pocoLookup["A"] = [createPoco("B"), createPoco("C")]
+        to.pocoLookup["D"] = [createPoco("E"), createPoco("F")]
+        to.pocoLookupMap["A"] = [["B": createPoco("C"), "D": createPoco("E")]]
 
         return to
     }
