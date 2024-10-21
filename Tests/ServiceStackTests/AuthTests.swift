@@ -41,6 +41,7 @@ final class AuthTests : @unchecked Sendable {
         #expect(r.result == request.name)
                                         
         let lastAccessToken = client.getTokenCookie()
+        #expect(lastAccessToken != nil)
 //        #expect(lastAccessToken != initialAccessToken)
     }
 
@@ -63,6 +64,7 @@ final class AuthTests : @unchecked Sendable {
         #expect(r.result == request.name)
 
         let lastAccessToken = self.client.getTokenCookie()
+        #expect(lastAccessToken != nil)
 //        #expect(lastAccessToken != initialAccessToken)
     }
 }
