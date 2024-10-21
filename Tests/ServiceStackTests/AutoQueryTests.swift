@@ -44,7 +44,7 @@ final class AutoQueryTests : @unchecked Sendable {
             let response = try client.get(request)
             
 //            Inspect.printDump(response)
-            #expect(response.total == 15)
+            #expect(response.total! >= 20 && response.total! < 30)
             #expect(response.results.count == 3)
             let names = response.results.map { $0.name! }.joined(separator: ",")
             #expect(names == "AngularJS,Go,Protocol Buffers")

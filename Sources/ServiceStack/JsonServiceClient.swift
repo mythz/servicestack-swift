@@ -105,6 +105,23 @@ open class JsonServiceClient : NSObject, @unchecked Sendable, ServiceClient, IHa
         replyUrl = self.baseUrl + "json/reply/"
         let url = toURL(self.baseUrl)
         domain = url.host!
+        super.init()
+        self.basePath = "api"
+    }
+    
+    open var basePath: String? {
+        get {
+            return self.replyUrl[self.baseUrl.count...]
+        }
+        set {
+            guard let path = newValue, !path.isEmpty else {
+                self.replyUrl = self.baseUrl.combinePath("json/reply") + "/"
+                self.replyUrl = self.baseUrl.combinePath("json/oneway") + "/"
+                return
+            }
+            self.replyUrl = self.baseUrl.combinePath(newValue!) + "/"
+            self.replyUrl = self.baseUrl.combinePath(newValue!) + "/"
+        }
     }
 
     open func createSession() -> URLSession {
@@ -347,6 +364,7 @@ open class JsonServiceClient : NSObject, @unchecked Sendable, ServiceClient, IHa
     }
 
     open func getData(request: URLRequest, retryIf:((HTTPURLResponse) -> Bool)? = nil) throws -> (Data, HTTPURLResponse)? {
+        print("URL: \(String(describing: request.url))")
         let dataTaskSync = createSession().dataTaskSync(request: request as URLRequest)
         lastTask = dataTaskSync.task
         let cb = dataTaskSync.callback
@@ -375,6 +393,7 @@ open class JsonServiceClient : NSObject, @unchecked Sendable, ServiceClient, IHa
     }
     
     open func getDataAsync(request: URLRequest, retryIf:((HTTPURLResponse) async throws -> Bool)? = nil) async throws -> (Data, HTTPURLResponse)? {
+        print("URL: \(String(describing: request.url))")
         let (data, res) = try await createSession().data(for: request)
 
         if let response = res as? HTTPURLResponse {
