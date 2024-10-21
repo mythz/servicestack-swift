@@ -16,10 +16,6 @@ final class JsonServiceClientTests : @unchecked Sendable {
         client = JsonServiceClient(baseUrl: "https://test.servicestack.net")
     }
 
-    deinit {
-        print("JsonServiceClientTests.deinit")
-    }
-
     @Test func Can_POST_Test_HelloAllTypes_async() async throws {
         let request = createHelloAllTypes()
 
