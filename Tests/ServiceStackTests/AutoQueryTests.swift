@@ -1,10 +1,5 @@
-//
-//  AutoQueryTests.swift
-//  ServiceStack
-//
-//  Created by Demis Bellot on 11/8/16.
-//
-//
+//  Copyright (c) 2013-present ServiceStack, Inc. All rights reserved.
+//  Created by Demis Bellot
 
 import Testing
 import Foundation
@@ -62,7 +57,6 @@ final class AutoQueryTests : @unchecked Sendable {
         request.name = "ServiceStack"
 
         do {
-            let url = client.createUrl(dto: request)
             let response = try client.get(request)
 
             #expect(response.total == 1)

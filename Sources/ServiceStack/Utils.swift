@@ -1,10 +1,5 @@
-//
-//  Utils.swift
-//  ServiceStack
-//
-//  Created by Demis Bellot on 2/19/21.
-//  Copyright © 2021 ServiceStack. All rights reserved.
-//
+//  Copyright (c) 2013-present ServiceStack, Inc. All rights reserved.
+//  Created by Demis Bellot
 
 #if canImport(FoundationNetworking)
     import FoundationNetworking
