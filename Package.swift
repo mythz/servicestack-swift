@@ -18,7 +18,9 @@ let package = Package(
             name: "ServiceStack"),
         .testTarget(
             name: "ServiceStackTests",
-            dependencies: ["ServiceStack"]
-        ),
+            dependencies: ["ServiceStack"],
+            resources: [
+                 .process("overview.json")
+             ]),
     ]
 )
